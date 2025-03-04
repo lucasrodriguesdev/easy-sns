@@ -54,15 +54,136 @@ Baixar as dependencias.
 #### 5 Criando as classes
 Primeiro precisamos criar a classe de configuração:
 https://github.com/lucasrodriguesdev/easy-sns/blob/master/src/main/java/br/com/lucasrodrigues/sns/SNSConfig.java
+```
+package br.com.lucasrodrigues.sns;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.sns.SnsAsyncClient;
+
+import java.net.URI;
+
+@Configuration
+public class SNSConfig {
+
+    @Bean
+    public SnsAsyncClient snsAsyncClient(){
+        return SnsAsyncClient.builder()
+                .endpointOverride(URI.create("http://localhost:4566"))
+                .region(Region.of("us-east-1"))
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create("test", "test")
+                ))
+                .build();
+    }
+}
+```
 
 Depois criamos uma classe que sera responsavel por se inscrever no tópico:
 https://github.com/lucasrodriguesdev/easy-sns/blob/master/src/main/java/br/com/lucasrodrigues/sns/SnsSubscriptionService.java
+```
+package br.com.lucasrodrigues.sns;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.sns.SnsAsyncClient;
+import software.amazon.awssdk.services.sns.model.SubscribeRequest;
+import software.amazon.awssdk.services.sns.model.SubscribeResponse;
+
+import java.util.concurrent.CompletableFuture;
+
+@Service
+public class SnsSubscriptionService {
+    private static final Logger log = LoggerFactory.getLogger(SnsSubscriptionService.class);
+    private final SnsAsyncClient snsAsyncClient;
+
+    public SnsSubscriptionService(SnsAsyncClient snsAsyncClient) {
+        this.snsAsyncClient = snsAsyncClient;
+    }
+
+    public void subscribeToTopic() {
+        //topico que criamos mais cedo
+        String topicArn = "arn:aws:sns:us-east-1:000000000000:meu-topico";
+        String protocol = "http"; // "http", "email", "sms", etc.
+        String endpoint = "http://host.docker.internal:8080/sns/notification";
+
+        SubscribeRequest request = SubscribeRequest.builder()
+                .topicArn(topicArn)
+                .protocol(protocol)
+                .endpoint(endpoint)
+                .returnSubscriptionArn(true)
+                .build();
+
+        CompletableFuture<SubscribeResponse> response =
+                snsAsyncClient.subscribe(request);
+
+        response.whenComplete((resp, error) -> {
+            if (error != null) {
+                log.error("Erro ao assinar o tópico SNS: {}",
+                        error.getMessage());
+            } else {
+                log.info("Assinatura bem-sucedida! Subscription ARN: {}",
+                        resp.subscriptionArn());
+            }
+        });
+    }
+}
+```
 
 Agora para facilitar criamos uma classe que ira executar este service de inscrição ao rodar o projeto:
 https://github.com/lucasrodriguesdev/easy-sns/blob/master/src/main/java/br/com/lucasrodrigues/sns/SnsStartupRunner.java
+```
+package br.com.lucasrodrigues.sns;
+
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
+
+@Component
+public class SnsStartupRunner implements CommandLineRunner {
+    private final SnsSubscriptionService snsSubscriptionService;
+
+    public SnsStartupRunner(SnsSubscriptionService snsSubscriptionService) {
+        this.snsSubscriptionService = snsSubscriptionService;
+    }
+
+    @Override
+    public void run(String... args) {
+        snsSubscriptionService.subscribeToTopic();
+    }
+}
+```
+
 
 Só falta criar um *endpoint* que será usado para receber a mensagem, conforme configuramos em *SnsSubscriptionService*, então vamos criar um controller:
 https://github.com/lucasrodriguesdev/easy-sns/blob/master/src/main/java/br/com/lucasrodrigues/sns/SnsController.java
+```
+package br.com.lucasrodrigues.sns;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/sns")
+public class SnsController {
+
+    @PostMapping("/notification")
+    public ResponseEntity<Void> handleSnsNotification(@RequestBody String message) {
+        // Exibe a mensagem recebida no log para visualização
+        System.out.println("Mensagem recebida no SNS: " + message);
+
+        // Aqui você pode adicionar a lógica de enviar e-mails ou fazer outro tipo de processamento
+        return ResponseEntity.ok().build();
+    }
+}
+```
+
 
 #### 6 Testando
 podemos subir o projeto com comando 
