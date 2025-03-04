@@ -17,13 +17,14 @@ deverá ser criado um tópico e vai exibir na lista algo como:
 
 #### 4 Configurando projeto
 Projeto pode ser criado em https://start.spring.io/
+```
 Project > Maven
 Language > Java
 Spring boot > 3.4.3
 Project metadata
 ...
 Dependencies > Spring WEB
-
+```
 Generate.
 
 Abrir na IDE e adicionar no pom.xml as configurações para AWS SNS
